@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "ClaudeUsageBar",
+  "version": "1.0.0",
+  "description": "Reads your Claude.ai usage figure from your own logged-in session and relays it to the ClaudeUsageBar menu bar app over localhost.",
+  "permissions": ["scripting"],
+  "host_permissions": [
+    "https://claude.ai/*",
+    "http://127.0.0.1:8787/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

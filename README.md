@@ -79,3 +79,19 @@ claude.ai page  ->  content.js  ->  background.js  ->  127.0.0.1:8787  ->  Swift
 - `background.js` POSTs the payload as JSON to the local app.
 - The Swift app runs a minimal HTTP server bound to `127.0.0.1:8787` only and renders
   the latest figure in the menu bar.
+
+## Security
+
+The local server is intended only for the companion extension. It applies several
+guards:
+
+- It binds to `127.0.0.1:8787` only and is never reachable off the loopback
+  interface.
+- CORS is locked to the `https://claude.ai` origin, so other web pages cannot drive
+  it from a browser.
+- It rejects requests whose `Host` header is not `127.0.0.1:8787` or
+  `localhost:8787`, which blocks DNS rebinding.
+- It rejects negative or oversized `Content-Length` and caps the request body at
+  64 KiB.
+- The `label`, `detail`, and `reset` fields are treated as untrusted: control
+  characters are stripped and length is capped before they reach the menu bar.

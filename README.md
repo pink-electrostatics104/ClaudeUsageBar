@@ -182,10 +182,4 @@ Unofficial project. **Not affiliated with, endorsed by, or supported by Anthropi
 
 ---
 
-<div align="center">
-<sub>
-
-**Keywords:** Claude usage menu bar · Claude AI usage tracker for Mac · Claude Code usage monitor · Claude 5-hour limit · Claude weekly limit tracker · Claude Max / Pro usage · macOS menu bar Claude rate limit · see how much Claude usage is left
-
-</sub>
-</div>
+**Keywords:** Claude usage menu bar, Claude AI usage tracker for Mac, Claude Code usage monitor, Claude 5-hour limit, Claude weekly limit tracker, Claude Max / Pro usage, macOS menu bar Claude rate limit, see how much Claude usage is left.

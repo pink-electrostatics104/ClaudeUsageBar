@@ -8,6 +8,7 @@
 
 Track your **Claude 5-hour limit** and **weekly limit** at a glance — no more opening settings, refreshing the page, or getting surprised by a "you've reached your usage limit" message mid-prompt.
 
+[![Download .dmg](https://img.shields.io/github/v/release/Rohilalala/ClaudeUsageBar?label=Download%20.dmg&color=D97757)](https://github.com/Rohilalala/ClaudeUsageBar/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-black?logo=apple)](#install)
 [![Browser](https://img.shields.io/badge/browser-Chrome%20%C2%B7%20Edge%20%C2%B7%20Brave%20%C2%B7%20Arc-4285F4?logo=googlechrome&logoColor=white)](#2-load-the-browser-extension)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -44,7 +45,11 @@ If you use **Claude**, **Claude Code**, or the **Claude Max / Pro** plans, you l
 
 ### 1. The menu bar app
 
-**Option A — disk image (recommended):**
+**Option A — download the prebuilt disk image (easiest):**
+
+Grab **`ClaudeUsageBar.dmg`** from the [latest release](https://github.com/Rohilalala/ClaudeUsageBar/releases/latest) and open it.
+
+**Option B — build the disk image yourself:**
 
 ```bash
 ./package.sh
@@ -53,7 +58,7 @@ open build/ClaudeUsageBar.dmg
 
 The disk image bundles everything — the app, the browser **Extension** folder, and an **INSTALL.txt** — on a single drag-to-install screen. Drag `ClaudeUsageBar.app` into **Applications** and launch it from there.
 
-**Option B — build and run directly:**
+**Option C — build and run directly (no disk image):**
 
 ```bash
 ./build.sh

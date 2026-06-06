@@ -6,6 +6,22 @@
 
 const ENDPOINT = "http://127.0.0.1:8787/usage";
 
+// When the extension is installed or updated, Chrome does not re-inject content
+// scripts into already-open tabs, so they keep running stale code (or none).
+// Re-inject into every open claude.ai tab so updates take effect without the
+// user having to reload each tab by hand.
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.tabs.query({ url: "https://claude.ai/*" }, (tabs) => {
+    for (const tab of tabs) {
+      if (tab.id == null) continue;
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ["content.js"]
+      }).catch(() => { /* tab may be discarded or restricted; ignore */ });
+    }
+  });
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || message.type !== "usage") return;
 

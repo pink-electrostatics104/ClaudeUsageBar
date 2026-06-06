@@ -8,11 +8,16 @@ cd "$(dirname "$0")"
 
 APP="build/ClaudeUsageBar.app"
 MACOS_DIR="$APP/Contents/MacOS"
+RES_DIR="$APP/Contents/Resources"
 
 rm -rf build
-mkdir -p "$MACOS_DIR"
+mkdir -p "$MACOS_DIR" "$RES_DIR"
 
 swiftc -O MenuBarApp/main.swift -o "$MACOS_DIR/ClaudeUsageBar"
+
+# App icon (Finder, Get Info, the DMG, notifications). The menu bar itself shows
+# text, not this icon.
+bash assets/make-icns.sh "$RES_DIR/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -25,6 +30,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <string>ClaudeUsageBar</string>
     <key>CFBundleExecutable</key>
     <string>ClaudeUsageBar</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>com.claudeusagebar.app</string>
     <key>CFBundlePackageType</key>
@@ -40,5 +47,10 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
+
+# Ad-hoc code signature. SMAppService (start-at-login) and UNUserNotificationCenter
+# (usage notifications) both refuse to operate from an unsigned bundle; an ad-hoc
+# signature is enough for local use.
+codesign --force --deep --sign - "$APP"
 
 echo "Built $APP"

@@ -2,46 +2,81 @@
 //
 // An NSStatusItem agent (no Dock icon) that runs a minimal HTTP server bound to
 // 127.0.0.1:8787 only. A browser extension POSTs the current Claude.ai usage
-// figure to /usage and the app renders it in the menu bar. The server is never
-// reachable off the loopback interface.
+// figures to /usage and the app renders them in the menu bar. The server is
+// never reachable off the loopback interface.
 
 import Cocoa
 import Network
+import ServiceManagement
+import UserNotifications
+
+// MARK: - Settings keys
+
+private let kShowFiveHour = "showFiveHourInTitle"
+private let kShowWeekly = "showWeeklyInTitle"
+private let kShowClaudeLabel = "showClaudeLabelInTitle"
+private let kShowResetsAtLabel = "showResetsAtLabelInTitle"
+private let kShowResetCountdown = "showResetCountdownInTitle"
+private let kAlarmAtFiveHourReset = "alarmAtFiveHourReset"
+private let kNotificationSound = "notificationSound"
 
 // MARK: - Shared state
+
+/// One usage figure: a short token for the title, a longer detail line, and a
+/// reset hint.
+private struct Metric {
+    var value = ""
+    var detail = ""
+    var reset = ""
+}
+
+/// A consistent snapshot for rendering.
+private struct Snapshot {
+    let fiveHour: Metric
+    let weekly: Metric
+    let lastUpdate: Date?
+    let stale: Bool
+}
 
 /// Holds the latest usage figures. All access is serialized so the network
 /// callbacks and the main thread never race.
 final class UsageState {
     private let queue = DispatchQueue(label: "com.claudeusagebar.state")
-    private var labelValue = "Claude --"
-    private var detailValue = ""
-    private var resetText = ""
-    private var lastUpdate = Date() // launch time, so the app goes stale 600s after launch with no data
+    private var fiveHour = Metric()
+    private var weekly = Metric()
+    private var lastUpdate: Date? // nil until the first figure arrives
 
-    /// Applies a usage update. Nil fields are left unchanged. Values are treated
+    /// Applies a usage update. Nil groups are left unchanged. Values are treated
     /// as untrusted: control characters are stripped and length is capped before
     /// they ever reach the menu bar.
-    func update(label: String?, detail: String?, reset: String?) {
+    func update(fiveHour: (value: String, detail: String, reset: String)?,
+                weekly: (value: String, detail: String, reset: String)?) {
+        guard fiveHour != nil || weekly != nil else { return }
         queue.sync {
-            if let label = label { labelValue = UsageState.sanitize(label) }
-            if let detail = detail { detailValue = UsageState.sanitize(detail) }
-            if let reset = reset { resetText = UsageState.sanitize(reset) }
+            if let f = fiveHour {
+                self.fiveHour = Metric(value: UsageState.sanitize(f.value),
+                                       detail: UsageState.sanitize(f.detail),
+                                       reset: UsageState.sanitize(f.reset))
+            }
+            if let w = weekly {
+                self.weekly = Metric(value: UsageState.sanitize(w.value),
+                                     detail: UsageState.sanitize(w.detail),
+                                     reset: UsageState.sanitize(w.reset))
+            }
             lastUpdate = Date()
+        }
+    }
+
+    fileprivate var snapshot: Snapshot {
+        queue.sync {
+            let stale = lastUpdate.map { Date().timeIntervalSince($0) > 600 } ?? false
+            return Snapshot(fiveHour: fiveHour, weekly: weekly, lastUpdate: lastUpdate, stale: stale)
         }
     }
 
     private static func sanitize(_ s: String) -> String {
         let scalars = s.unicodeScalars.filter { $0.value >= 0x20 && $0.value != 0x7f }.prefix(120)
         return String(String.UnicodeScalarView(scalars))
-    }
-
-    /// A consistent snapshot for rendering. `stale` is true if no update in 600s.
-    var snapshot: (label: String, detail: String, reset: String, stale: Bool) {
-        queue.sync {
-            let stale = Date().timeIntervalSince(lastUpdate) > 600
-            return (labelValue, detailValue, resetText, stale)
-        }
     }
 }
 
@@ -62,10 +97,25 @@ private enum ParseResult {
 
 // MARK: - App delegate
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotificationCenterDelegate {
     private let state = UsageState()
     private let port: NWEndpoint.Port = 8787
     private let netQueue = DispatchQueue(label: "com.claudeusagebar.http")
+
+    // Title turns orange at this percent, red at the higher one. A notification
+    // fires once each time a figure crosses the red line upward.
+    private let warnPercent = 75
+    private let critPercent = 90
+    private let resetAlarmIdentifier = "five-hour-reset-alarm"
+    private let notificationSounds = [
+        "Default", "Basso", "Blow", "Bottle", "Frog", "Funk", "Glass", "Hero",
+        "Morse", "Ping", "Pop", "Purr", "Sosumi", "Submarine", "Tink"
+    ]
+
+    private var notificationsAuthorized = false
+    private var scheduledResetAlarm = ""
+    private var lastFivePercent: Int? // nil until the first reading, to avoid
+    private var lastWeeklyPercent: Int? // notifying on launch for an existing high
 
     // Hardening limits and allow lists.
     private let maxBodyBytes = 65536
@@ -74,21 +124,40 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let allowedOrigin = "https://claude.ai"
 
     private var statusItem: NSStatusItem!
-    private var detailItem: NSMenuItem!
-    private var resetItem: NSMenuItem!
+    private var fiveDetailItem: NSMenuItem!
+    private var fiveResetItem: NSMenuItem!
+    private var weeklyDetailItem: NSMenuItem!
+    private var weeklyResetItem: NSMenuItem!
+    private var updatedItem: NSMenuItem!
+    private var showFiveItem: NSMenuItem!
+    private var showWeeklyItem: NSMenuItem!
+    private var showClaudeItem: NSMenuItem!
+    private var showResetsAtItem: NSMenuItem!
+    private var showResetCountdownItem: NSMenuItem!
+    private var resetAlarmItem: NSMenuItem!
+    private var notificationSoundItems: [NSMenuItem] = []
+    private var previewedSoundItem: NSMenuItem?
+    private var startAtLoginItem: NSMenuItem!
     private var listener: NWListener?
     private var timer: Timer?
+    private var renderTimerInterval: TimeInterval = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        UserDefaults.standard.register(defaults: [
+            kShowFiveHour: true,
+            kShowWeekly: false,
+            kShowClaudeLabel: true,
+            kShowResetsAtLabel: true,
+            kShowResetCountdown: false,
+            kAlarmAtFiveHourReset: false,
+            kNotificationSound: "Default"
+        ])
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         buildMenu()
+        setupNotifications()
         render()
         startServer()
-
-        // Re-render every 30s so the stale state appears even without new data.
-        timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            self?.render()
-        }
     }
 
     // MARK: Menu
@@ -96,17 +165,81 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func buildMenu() {
         let menu = NSMenu()
 
-        let open = NSMenuItem(title: "Open claude.ai", action: #selector(openClaude), keyEquivalent: "")
+        let open = NSMenuItem(title: "Sync usage with Claude.ai", action: #selector(openClaude), keyEquivalent: "")
         open.target = self
         menu.addItem(open)
 
         menu.addItem(.separator())
 
         // Display-only lines. Passing action: nil leaves them auto-disabled.
-        detailItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        menu.addItem(detailItem)
-        resetItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        menu.addItem(resetItem)
+        fiveDetailItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        menu.addItem(fiveDetailItem)
+        fiveResetItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        menu.addItem(fiveResetItem)
+
+        menu.addItem(.separator())
+
+        weeklyDetailItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        menu.addItem(weeklyDetailItem)
+        weeklyResetItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        menu.addItem(weeklyResetItem)
+
+        menu.addItem(.separator())
+
+        updatedItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        menu.addItem(updatedItem)
+
+        menu.addItem(.separator())
+
+        // Settings submenu: choose what appears in the menu bar title.
+        let settings = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        showFiveItem = NSMenuItem(title: "Show 5-hour in title", action: #selector(toggleFiveHour), keyEquivalent: "")
+        showFiveItem.target = self
+        submenu.addItem(showFiveItem)
+        showWeeklyItem = NSMenuItem(title: "Show weekly in title", action: #selector(toggleWeekly), keyEquivalent: "")
+        showWeeklyItem.target = self
+        submenu.addItem(showWeeklyItem)
+
+        showClaudeItem = NSMenuItem(title: "Show \"Claude\" label", action: #selector(toggleClaudeLabel), keyEquivalent: "")
+        showClaudeItem.target = self
+        submenu.addItem(showClaudeItem)
+
+        showResetsAtItem = NSMenuItem(title: "Show \"Resets at\" label", action: #selector(toggleResetsAtLabel), keyEquivalent: "")
+        showResetsAtItem.target = self
+        submenu.addItem(showResetsAtItem)
+
+        showResetCountdownItem = NSMenuItem(title: "Show reset countdown", action: #selector(toggleResetCountdown), keyEquivalent: "")
+        showResetCountdownItem.target = self
+        submenu.addItem(showResetCountdownItem)
+
+        resetAlarmItem = NSMenuItem(title: "Alarm at 5-hour reset", action: #selector(toggleResetAlarm), keyEquivalent: "")
+        resetAlarmItem.target = self
+        submenu.addItem(resetAlarmItem)
+
+        let soundItem = NSMenuItem(title: "Notification sound", action: nil, keyEquivalent: "")
+        let soundMenu = NSMenu()
+        soundMenu.delegate = self
+        for sound in notificationSounds {
+            let item = NSMenuItem(title: sound, action: #selector(selectNotificationSound), keyEquivalent: "")
+            item.target = self
+            item.representedObject = sound
+            soundMenu.addItem(item)
+            notificationSoundItems.append(item)
+        }
+        soundItem.submenu = soundMenu
+        submenu.addItem(soundItem)
+
+        // Start at login. Only offered on macOS 13+, where SMAppService exists.
+        if #available(macOS 13.0, *) {
+            submenu.addItem(.separator())
+            startAtLoginItem = NSMenuItem(title: "Start at login", action: #selector(toggleStartAtLogin), keyEquivalent: "")
+            startAtLoginItem.target = self
+            submenu.addItem(startAtLoginItem)
+        }
+
+        settings.submenu = submenu
+        menu.addItem(settings)
 
         menu.addItem(.separator())
 
@@ -119,15 +252,321 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func render() {
         let s = state.snapshot
-        statusItem.button?.title = s.stale ? "Claude (stale)" : s.label
-        detailItem.title = s.detail.isEmpty ? "No usage data yet" : s.detail
-        resetItem.title = s.reset.isEmpty ? "Reset: unknown" : "Resets \(s.reset)"
+        let defaults = UserDefaults.standard
+        let showFive = defaults.bool(forKey: kShowFiveHour)
+        let showWeekly = defaults.bool(forKey: kShowWeekly)
+        let showClaude = defaults.bool(forKey: kShowClaudeLabel)
+        let showResetsAt = defaults.bool(forKey: kShowResetsAtLabel)
+        let showResetCountdown = defaults.bool(forKey: kShowResetCountdown)
+        let resetAlarmEnabled = defaults.bool(forKey: kAlarmAtFiveHourReset)
+        let label = showClaude ? "Claude " : "" // the "Claude" word, when enabled
+
+        // Title.
+        if s.stale {
+            statusItem.button?.title = showClaude ? "Claude (stale)" : "(stale)"
+        } else {
+            var parts: [String] = []
+            var shownPercents: [Int] = []
+            if showFive, !s.fiveHour.value.isEmpty {
+                if let fivePercent = percent(s.fiveHour.value), fivePercent >= 100, !s.fiveHour.reset.isEmpty {
+                    let resetValue = showResetCountdown
+                        ? resetCountdown(toClock: s.fiveHour.reset) ?? s.fiveHour.reset
+                        : s.fiveHour.reset
+                    parts.append(showResetsAt ? "Resets at \(resetValue)" : resetValue)
+                } else {
+                    parts.append(s.fiveHour.value)
+                }
+                if let p = percent(s.fiveHour.value) { shownPercents.append(p) }
+            }
+            if showWeekly, !s.weekly.value.isEmpty {
+                parts.append(s.weekly.value)
+                if let p = percent(s.weekly.value) { shownPercents.append(p) }
+            }
+            if parts.isEmpty {
+                statusItem.button?.title = showClaude ? "Claude --" : "--"
+            } else {
+                var title = label + parts.joined(separator: " / ")
+                if parts.count == 1, showWeekly, !showFive { title += " wk" } // disambiguate weekly only
+                // Colour by the highest figure shown: orange when warm, red when high.
+                if let color = warnColor(forPercent: shownPercents.max()) {
+                    statusItem.button?.attributedTitle =
+                        NSAttributedString(string: title, attributes: [.foregroundColor: color])
+                } else {
+                    statusItem.button?.title = title // plain colour
+                }
+            }
+        }
+
+        // Fire a notification if any figure just crossed the red line.
+        checkThresholds(s)
+        updateResetAlarm(reset: s.fiveHour.reset, enabled: resetAlarmEnabled)
+
+        // Detail lines.
+        fiveDetailItem.title = s.fiveHour.detail.isEmpty ? "5-hour: no data yet" : "5-hour: \(s.fiveHour.detail)"
+        fiveResetItem.title = resetLine(s.fiveHour.reset, clock: true)
+        weeklyDetailItem.title = s.weekly.detail.isEmpty ? "Weekly: no data yet" : "Weekly: \(s.weekly.detail)"
+        weeklyResetItem.title = resetLine(s.weekly.reset, clock: false)
+        updatedItem.title = "Updated " + ago(s.lastUpdate)
+
+        // Settings checkmarks.
+        showFiveItem.state = showFive ? .on : .off
+        showWeeklyItem.state = showWeekly ? .on : .off
+        showClaudeItem.state = showClaude ? .on : .off
+        showResetsAtItem.state = showResetsAt ? .on : .off
+        showResetCountdownItem.state = showResetCountdown ? .on : .off
+        resetAlarmItem.state = resetAlarmEnabled ? .on : .off
+        let selectedSound = defaults.string(forKey: kNotificationSound) ?? "Default"
+        for item in notificationSoundItems {
+            item.state = item.representedObject as? String == selectedSound ? .on : .off
+        }
+        if #available(macOS 13.0, *), let item = startAtLoginItem {
+            item.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        }
+        configureRenderTimer()
+    }
+
+    private func configureRenderTimer() {
+        let defaults = UserDefaults.standard
+        let fivePercent = percent(state.snapshot.fiveHour.value) ?? 0
+        let countdownVisible = defaults.bool(forKey: kShowResetCountdown)
+            && defaults.bool(forKey: kShowFiveHour)
+            && fivePercent >= 100
+        let interval: TimeInterval = countdownVisible ? 1 : 15
+        guard interval != renderTimerInterval else { return }
+
+        timer?.invalidate()
+        renderTimerInterval = interval
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            self?.render()
+        }
+    }
+
+    /// Builds a "Resets ..." line, adding a countdown when the reset is a clock time.
+    private func resetLine(_ reset: String, clock: Bool) -> String {
+        guard !reset.isEmpty else { return "Resets: unknown" }
+        var line = "Resets \(reset)"
+        if clock, let countdown = countdown(toClock: reset) {
+            line += " (\(countdown))"
+        }
+        return line
+    }
+
+    /// Parses a clock time like "3:00 PM" or "15:00" and returns "in 2h 14m"
+    /// until its next occurrence, or nil if it cannot be parsed.
+    private func countdown(toClock reset: String) -> String? {
+        guard let next = nextDate(forClock: reset) else { return nil }
+        let diff = Int(next.timeIntervalSinceNow)
+        guard diff > 0 else { return nil }
+        let hours = diff / 3600
+        let minutes = (diff % 3600) / 60
+        return hours > 0 ? "in \(hours)h \(minutes)m" : "in \(minutes)m"
+    }
+
+    private func resetCountdown(toClock reset: String) -> String? {
+        guard let next = nextDate(forClock: reset) else { return nil }
+        let seconds = max(0, Int(next.timeIntervalSinceNow))
+        return "\(seconds / 60)m \(seconds % 60)s"
+    }
+
+    private func nextDate(forClock reset: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        let trimmed = reset.trimmingCharacters(in: .whitespaces)
+        for format in ["h:mm a", "H:mm"] {
+            formatter.dateFormat = format
+            guard let time = formatter.date(from: trimmed) else { continue }
+            let calendar = Calendar.current
+            let comps = calendar.dateComponents([.hour, .minute], from: time)
+            return calendar.nextDate(after: Date(), matching: comps, matchingPolicy: .nextTime)
+        }
+        return nil
+    }
+
+    /// A coarse "12s ago" / "3m ago" string for the last update.
+    private func ago(_ date: Date?) -> String {
+        guard let date = date else { return "never" }
+        let seconds = Int(Date().timeIntervalSince(date))
+        if seconds < 60 { return "\(seconds)s ago" }
+        if seconds < 3600 { return "\(seconds / 60)m ago" }
+        return "\(seconds / 3600)h ago"
+    }
+
+    /// Parses the leading integer out of a value like "42%". Returns nil when the
+    /// value has no number (for example "" or "--").
+    private func percent(_ value: String) -> Int? {
+        let digits = value.prefix { $0.isNumber }
+        return digits.isEmpty ? nil : Int(digits)
+    }
+
+    /// The title colour for a percentage: red when critical, orange when high,
+    /// nil (default colour) otherwise.
+    private func warnColor(forPercent pct: Int?) -> NSColor? {
+        guard let pct = pct else { return nil }
+        if pct >= critPercent { return .systemRed }
+        if pct >= warnPercent { return .systemOrange }
+        return nil
+    }
+
+    // MARK: Notifications
+
+    private func setupNotifications() {
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        center.requestAuthorization(options: [.alert, .sound]) { [weak self] granted, _ in
+            DispatchQueue.main.async {
+                self?.notificationsAuthorized = granted
+                self?.render()
+            }
+        }
+    }
+
+    private func updateResetAlarm(reset: String, enabled: Bool) {
+        let center = UNUserNotificationCenter.current()
+        guard enabled else {
+            center.removePendingNotificationRequests(withIdentifiers: [resetAlarmIdentifier])
+            scheduledResetAlarm = ""
+            return
+        }
+        guard notificationsAuthorized, !reset.isEmpty, let date = nextDate(forClock: reset) else {
+            return
+        }
+        guard scheduledResetAlarm != reset else { return }
+
+        center.removePendingNotificationRequests(withIdentifiers: [resetAlarmIdentifier])
+        let content = UNMutableNotificationContent()
+        content.title = "Claude 5-hour limit reset"
+        content.body = "Your 5-hour usage limit has reset."
+        content.sound = notificationSound()
+        let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        let request = UNNotificationRequest(identifier: resetAlarmIdentifier, content: content, trigger: trigger)
+        center.add(request)
+        scheduledResetAlarm = reset
+    }
+
+    /// Notifies once when a figure crosses the critical line upward. The first
+    /// reading only establishes a baseline so a relaunch at an already-high figure
+    /// does not spam a notification.
+    private func checkThresholds(_ s: Snapshot) {
+        maybeNotify(label: "5-hour", pct: percent(s.fiveHour.value), last: &lastFivePercent)
+        maybeNotify(label: "Weekly", pct: percent(s.weekly.value), last: &lastWeeklyPercent)
+    }
+
+    private func maybeNotify(label: String, pct: Int?, last: inout Int?) {
+        guard let pct = pct else { return }
+        defer { last = pct }
+        guard let prev = last else { return } // baseline only on first reading
+        if prev < critPercent && pct >= critPercent {
+            postNotification(title: "Claude usage high",
+                             body: "\(label) limit at \(pct)% used.")
+        }
+    }
+
+    private func postNotification(title: String, body: String) {
+        guard notificationsAuthorized else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = notificationSound()
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    private func notificationSound() -> UNNotificationSound {
+        let sound = UserDefaults.standard.string(forKey: kNotificationSound) ?? "Default"
+        guard sound != "Default" else { return .default }
+        return UNNotificationSound(named: UNNotificationSoundName(rawValue: "\(sound).aiff"))
+    }
+
+    func menu(_ menu: NSMenu, willHighlight item: NSMenuItem?) {
+        guard let item = item, notificationSoundItems.contains(where: { $0 === item }) else {
+            previewedSoundItem = nil
+            return
+        }
+        guard previewedSoundItem !== item, let sound = item.representedObject as? String else { return }
+        previewedSoundItem = item
+        previewSound(named: sound)
+    }
+
+    private func previewSound(named sound: String) {
+        if sound == "Default" {
+            NSSound.beep()
+        } else {
+            NSSound(named: NSSound.Name(sound))?.play()
+        }
+    }
+
+    /// Show banners even though the app is a background agent.
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
     }
 
     @objc private func openClaude() {
-        if let url = URL(string: "https://claude.ai") {
+        if let url = URL(string: "https://claude.ai/new#settings/usage") {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    @objc private func toggleFiveHour() {
+        let defaults = UserDefaults.standard
+        defaults.set(!defaults.bool(forKey: kShowFiveHour), forKey: kShowFiveHour)
+        render()
+    }
+
+    @objc private func toggleWeekly() {
+        let defaults = UserDefaults.standard
+        defaults.set(!defaults.bool(forKey: kShowWeekly), forKey: kShowWeekly)
+        render()
+    }
+
+    @objc private func toggleClaudeLabel() {
+        let defaults = UserDefaults.standard
+        defaults.set(!defaults.bool(forKey: kShowClaudeLabel), forKey: kShowClaudeLabel)
+        render()
+    }
+
+    @objc private func toggleResetsAtLabel() {
+        let defaults = UserDefaults.standard
+        defaults.set(!defaults.bool(forKey: kShowResetsAtLabel), forKey: kShowResetsAtLabel)
+        render()
+    }
+
+    @objc private func toggleResetCountdown() {
+        let defaults = UserDefaults.standard
+        defaults.set(!defaults.bool(forKey: kShowResetCountdown), forKey: kShowResetCountdown)
+        render()
+    }
+
+    @objc private func toggleResetAlarm() {
+        let defaults = UserDefaults.standard
+        defaults.set(!defaults.bool(forKey: kAlarmAtFiveHourReset), forKey: kAlarmAtFiveHourReset)
+        render()
+    }
+
+    @objc private func selectNotificationSound(_ sender: NSMenuItem) {
+        guard let sound = sender.representedObject as? String else { return }
+        UserDefaults.standard.set(sound, forKey: kNotificationSound)
+        scheduledResetAlarm = ""
+        render()
+    }
+
+    /// Toggles the app's launch-at-login registration via SMAppService. The state
+    /// lives in the system login items, so no local persistence is needed.
+    @available(macOS 13.0, *)
+    @objc private func toggleStartAtLogin() {
+        let service = SMAppService.mainApp
+        do {
+            if service.status == .enabled {
+                try service.unregister()
+            } else {
+                try service.register()
+            }
+        } catch {
+            NSLog("ClaudeUsageBar: start-at-login toggle failed: \(error)")
+        }
+        render()
     }
 
     @objc private func quit() {
@@ -233,12 +672,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             send(status: "200 OK", body: "ok", on: connection)
         case ("POST", "/usage"):
             if let json = try? JSONSerialization.jsonObject(with: request.body) as? [String: Any] {
-                state.update(
-                    label: json["label"] as? String,
-                    detail: json["detail"] as? String,
-                    reset: json["reset"] as? String
-                )
-                DispatchQueue.main.async { [weak self] in self?.render() }
+                func group(_ key: String) -> (value: String, detail: String, reset: String)? {
+                    guard let d = json[key] as? [String: Any] else { return nil }
+                    return (d["value"] as? String ?? "", d["detail"] as? String ?? "", d["reset"] as? String ?? "")
+                }
+                let fiveHour = group("five_hour")
+                let weekly = group("weekly")
+                if fiveHour != nil || weekly != nil {
+                    state.update(fiveHour: fiveHour, weekly: weekly)
+                    DispatchQueue.main.async { [weak self] in self?.render() }
+                }
             }
             send(status: "200 OK", body: "ok", on: connection)
         default:

